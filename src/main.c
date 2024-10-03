@@ -1,3 +1,7 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "esp_task_wdt.h"
 #include "string.h"
 #include "sys/unistd.h"
 #include "sys/stat.h"
@@ -11,16 +15,55 @@
 static const char *SDCARDTAG = "SD_CARD";
 static const char *CANTAG = "CAN_TAG";
 
+QueueHandle_t writequeue;
 FILE *log_CAN;
 
-int print_to_SD(const char * something, va_list args){
-    if (log_CAN == NULL)
-    {
-        printf("%s() ABORT, FIle pointer is not yet loaded \n", __FUNCTION__);
-        return -1;
+
+void vTaskCANReceive(void* pvParameter){
+    twai_message_t message;
+    uint8_t data[8]={0};
+    for(;;){
+         if (twai_receive(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
+            ESP_LOGI(CANTAG,"%lx : ",message.identifier);
+            for (int i = 0; i < message.data_length_code; i++) {
+                printf(" %x",message.data[i]);
+            }
+            memcpy(data,message.data,sizeof(message.data));
+            if (xQueueSendToBack(writequeue,(void *)&data,pdMS_TO_TICKS(1000)) != pdPASS)
+            {
+                printf("Queue not sent \n");
+            }
+            memset(&data,0,sizeof(data));          
+        } else {
+            ESP_LOGI(CANTAG,"Failed to receive message");
+        }
     }
-    vfprintf(log_CAN,something,args);
-    return vprintf(something,args);
+}
+
+void vWriteToSD(void* pvParameter){
+    uint8_t data[8]={0};
+    const char *file_log = "/test1/LOG.txt";
+    TickType_t currentTick;
+    uint32_t tickinms;
+    for(;;){
+        if (writequeue != NULL)
+        {
+            if (xQueueReceive(writequeue,(void*)&data,pdMS_TO_TICKS(1000))==pdTRUE)
+            {
+                currentTick = xTaskGetTickCount();
+                tickinms = currentTick *portTICK_PERIOD_MS;
+                log_CAN = fopen(file_log,"a");
+                fprintf(log_CAN,"%ld : %02x %02x %02x %02x %02x %02x %02x %02x \n", tickinms, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+                fclose(log_CAN);
+                memset(&data,0,sizeof(data));
+                vTaskDelay(10);
+            }
+        }else
+        {
+            printf("Queue is null \n");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 }
 
 void app_main()
@@ -95,7 +138,7 @@ void app_main()
     ESP_LOGI(SDCARDTAG,"DONE");
 
     //const char *file_baru = "/test1/sesuatu.txt";
-    const char *file_log = "/test1/LOG.txt";
+    //const char *file_log = "/test1/LOG.txt";
 
     // char data[]= "The swaying shades of acacias \n"
     //              "In flower arrangements suggest \n"
@@ -112,27 +155,9 @@ void app_main()
     // fclose(f);
     // ESP_LOGI(SDCARDTAG, "File written...");
 
-    ESP_LOGI(SDCARDTAG,"SWITCHING TO PRINT LOGS INTO SDCARD");
-    esp_log_set_vprintf(&print_to_SD);
-    
-    while (1)
-    {
-        log_CAN = fopen(file_log,"a");
-        twai_message_t message;
-        if (twai_receive(&message, pdMS_TO_TICKS(10000)) == ESP_OK) {
-            char* CAN_data = calloc(500,sizeof(char));
-            char* temp = CAN_data;
-            CAN_data += sprintf(CAN_data,"ID is %lx : ",message.identifier);
-            CAN_data += sprintf(CAN_data,"Data :");
-            for (int i = 0; i < message.data_length_code; i++) {
-                CAN_data += sprintf(CAN_data," %x",message.data[i]);
-            }
-            ESP_LOGI(SDCARDTAG,"%s",temp);
-            free(temp);
-        } else {
-            ESP_LOGI(SDCARDTAG,"Failed to receive message");
-        }
-        fclose(log_CAN);
-        //vTaskDelay(3000/portTICK_PERIOD_MS);
-    }       
+    uint8_t data[8];
+    writequeue = xQueueCreate(10,sizeof(data));
+    xTaskCreatePinnedToCore(vTaskCANReceive,"CAN Receiver Task",2048,NULL,0,NULL,0);
+    xTaskCreatePinnedToCore(vWriteToSD,"Writing to SD CARD",2048,NULL,0,NULL,1);
+     
 }
