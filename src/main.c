@@ -40,6 +40,23 @@ void vTaskCANReceive(void* pvParameter){
     }
 }
 
+void vTask_Data_Decode(void *pvParameter){
+    uint8_t data[8]={0};
+    for (;;)
+    {
+        if(writequeue != NULL ){
+            if(xQueueReceive(writequeue,(void*)&data,pdMS_TO_TICKS(1000))==pdTRUE){
+                
+            }
+        }else
+        {
+            printf("Queue is NULL \n");
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
+    
+}
+
 void vWriteToSD(void* pvParameter){
     uint8_t data[8]={0};
     const char *file_log = "/test1/LOG.txt";
@@ -136,24 +153,6 @@ void app_main()
     ESP_LOGI(SDCARDTAG,"FIlesystem mounted");
     sdmmc_card_print_info(stdout,card);
     ESP_LOGI(SDCARDTAG,"DONE");
-
-    //const char *file_baru = "/test1/sesuatu.txt";
-    //const char *file_log = "/test1/LOG.txt";
-
-    // char data[]= "The swaying shades of acacias \n"
-    //              "In flower arrangements suggest \n"
-    //              "That it's time for me to be a man \n"
-    //              "Or else with what regrets \n"
-    //              "Would I be left to live forever \n";
-
-    // ESP_LOGI(SDCARDTAG, "Opening file %s", file_baru);
-    // FILE *f = fopen(file_baru, "w");
-    // if (f == NULL) {
-    //     ESP_LOGE(SDCARDTAG, "Failed to open file f  or writing");
-    // }
-    // fprintf(f, data);
-    // fclose(f);
-    // ESP_LOGI(SDCARDTAG, "File written...");
 
     uint8_t data[8];
     writequeue = xQueueCreate(10,sizeof(data));

@@ -33,3 +33,7 @@ typedef struct
     uint32_t BodySeating;
     float LiveWeight;
 }data_to_write;
+
+uint16_t id_decode( uint8_t *id);
+uint32_t data_reverse(uint8_t *data, uint8_t data_lenth_code);
+void update_struct ( data_to_write * datatowrite, uint16_t id, uint32_t data);
